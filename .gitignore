@@ -1,0 +1,52 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+**/bin/
+**/obj/
+[Bb]uild/
+[Bb]uilds/
+[Oo]ut/
+artifacts/
+
+# User-specific / Visual Studio
+.vs/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+
+# IDE settings
+.idea/
+.vscode/
+
+# Package restores
+packages/
+*.nupkg
+*.snupkg
+*.nuspec
+.nuget/
+
+# Logs and diagnostics
+*.log
+logs/
+TestResult*/
+TestResults/
+*.VisualState.xml
+*.coverage
+*.coveragexml
+coverage/
+
+# ReSharper / Rider
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# ASP.NET / front-end
+node_modules/
+wwwroot/lib/
+
+# Local app configuration
+appsettings.*.local.json
+appsettings.*.Local.json
