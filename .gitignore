@@ -50,3 +50,10 @@ wwwroot/lib/
 # Local app configuration
 appsettings.*.local.json
 appsettings.*.Local.json
+
+# MinIO runtime data (DO NOT COMMIT)
+data/
+.minio.sys/
+
+# MinIO temp & backup files
+*.bkp
