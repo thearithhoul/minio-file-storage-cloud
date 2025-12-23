@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Minio;
+using StackExchange.Redis;
 
 namespace Backend
 {
@@ -40,6 +41,7 @@ namespace Backend
             var minIoConnection = Configuration.GetSection("minioConnection");
 
             services.Configure<MinioOptions>(Configuration.GetSection("minioConnection"));
+            services.Configure<RedisOptions>(Configuration.GetSection("Redis"));
 
             services.AddSingleton(new Snowflake(1, 0));
 
@@ -54,6 +56,24 @@ namespace Backend
                  .Build();
             });
 
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+            {
+                var options = sp.GetRequiredService<IOptions<RedisOptions>>().Value;
+                if (string.IsNullOrWhiteSpace(options.ConnectionString))
+                {
+                    throw new InvalidOperationException("Redis connection string is not configured.");
+                }
+
+                var configuration = ConfigurationOptions.Parse(options.ConnectionString, true);
+                if (options.Database.HasValue)
+                {
+                    configuration.DefaultDatabase = options.Database.Value;
+                }
+
+                return ConnectionMultiplexer.Connect(configuration);
+            });
+
+            services.AddSingleton<RedisService>();
 
 
         }

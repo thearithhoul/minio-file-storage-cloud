@@ -24,7 +24,14 @@ namespace Backend.Controllers
         private readonly Snowflake _snowflake;
         private readonly MinioOptions _minioOptions;
         private readonly IMinioClient _minio;
-        public ItemsControllers(IConfiguration config, IOptions<MinioOptions> options, StoreContext storeContext, IMinioClient minio, Snowflake snowflake)
+        private readonly RedisService _redis;
+        public ItemsControllers(
+            IConfiguration config,
+            IOptions<MinioOptions> options,
+            StoreContext storeContext,
+            IMinioClient minio,
+            Snowflake snowflake,
+            RedisService redis)
         {
 
             _config = config;
@@ -32,6 +39,7 @@ namespace Backend.Controllers
             _context = storeContext;
             _minio = minio;
             _snowflake = snowflake;
+            _redis = redis;
 
 
 
@@ -104,6 +112,7 @@ namespace Backend.Controllers
                 await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
+                await _redis.RemoveByPrefixAsync("items:list:");
                 return Ok(ApiResponse<string>.Ok(""));
             }
             catch (Exception ex)
@@ -190,6 +199,9 @@ namespace Backend.Controllers
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                await _redis.RemoveAsync($"item:{id}");
+                await _redis.RemoveByPrefixAsync("items:list:");
+
                 return Ok(ApiResponse<string>.Ok(""));
             }
             catch (Exception ex)
@@ -207,6 +219,14 @@ namespace Backend.Controllers
         {
             if (limit <= 0 || page <= 0)
                 return BadRequest(ApiResponse<string>.Fail("Limit and page must be greater than zero"));
+
+            var cacheKey = $"items:list:{limit}:{page}";
+            var cached = await _redis.GetObjectAsync<ReadItemsResponse>(cacheKey);
+            if (cached != null)
+            {
+                return Ok(ApiResponse<ReadItemsResponse>.Ok(cached));
+            }
+
             try
             {
                 var list = await _context.ReadItems
@@ -214,31 +234,38 @@ namespace Backend.Controllers
                 .AsNoTracking()
                 .ToListAsync();
 
+                ReadItemsResponse response;
+
                 if (!list.Any())
                 {
-                    return Ok(ApiResponse<ReadItemsResponse>.Ok(new ReadItemsResponse
+                    response = new ReadItemsResponse
                     {
                         Items = Array.Empty<ItemDto>(),
                         TotalCount = 0,
                         TotalPage = 0
-                    }));
+                    };
                 }
-                var response = new ReadItemsResponse
+                else
                 {
-                    Items = list.Select(item => new ItemDto
+                    response = new ReadItemsResponse
                     {
-                        ItemName = item.ItemName ?? "",
-                        ImagesId = item.ImagesId?
-                            .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                            ?? Array.Empty<string>(),
-                        BasePrice = item.BasePrice,
-                        StockQty = item.StockQty,
-                        CreateAt = item.CreateAt,
-                        UpdateAt = item.UpdateAt
-                    }),
-                    TotalCount = list.First().TotalCount,
-                    TotalPage = list.First().TotalPages
-                };
+                        Items = list.Select(item => new ItemDto
+                        {
+                            ItemName = item.ItemName ?? "",
+                            ImagesId = item.ImagesId?
+                                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                ?? Array.Empty<string>(),
+                            BasePrice = item.BasePrice,
+                            StockQty = item.StockQty,
+                            CreateAt = item.CreateAt,
+                            UpdateAt = item.UpdateAt
+                        }),
+                        TotalCount = list.First().TotalCount,
+                        TotalPage = list.First().TotalPages
+                    };
+                }
+
+                await _redis.SetObjectAsync(cacheKey, response, TimeSpan.FromMinutes(2));
                 return Ok(ApiResponse<ReadItemsResponse>.Ok(response));
             }
             catch (Exception ex)
@@ -255,6 +282,13 @@ namespace Backend.Controllers
         {
             try
             {
+                var cacheKey = $"item:{id}";
+                var cached = await _redis.GetObjectAsync<ReadItemsResponse>(cacheKey);
+                if (cached != null)
+                {
+                    return Ok(ApiResponse<ReadItemsResponse>.Ok(cached));
+                }
+
                 var item = await _context.Items.FindAsync(id);
                 if (item == null)
                 {
@@ -275,6 +309,9 @@ namespace Backend.Controllers
                     TotalCount = 1,
                     TotalPage = 1,
                 };
+
+                await _redis.SetObjectAsync(cacheKey, response, TimeSpan.FromMinutes(5));
+
                 return Ok(ApiResponse<ReadItemsResponse>.Ok(response));
 
             }
